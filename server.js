@@ -1,23 +1,89 @@
+// ---------------------------
+//  BIKA STORE API — SERVER.JS
+// ---------------------------
+
 import express from "express";
 import cors from "cors";
-import { connectDB } from "./db/mongo.js";
-import { ENV } from "./config/env.js";
-import routes from "./routes/index.js";
+import bodyParser from "body-parser";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+import connectDB from "./db/connect.js";
 
+// Routes
+import orderRoutes from "./routes/orders.js";
+import reviewRoutes from "./routes/reviews.js";
+import paymentRoutes from "./routes/payments.js";
+import botRoutes from "./routes/bot.js";
+
+// Load .env
+dotenv.config();
+
+// Initialize
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-app.use(cors());
-app.use(express.json());
-app.use("/uploads", express.static("uploads"));
+// Helpers for dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+// ---------------------------
+//   MIDDLEWARES
+// ---------------------------
+
+// Allow web client to call APIs
+app.use(cors({
+  origin: process.env.WEB_ORIGIN || "*",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
+
+// Parse JSON
+app.use(bodyParser.json({ limit: "10mb" }));
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// Static for uploaded payments
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+
+// ---------------------------
+//   CONNECT DATABASE
+// ---------------------------
 connectDB();
 
-app.use("/api", routes);
 
+// ---------------------------
+//   ROUTES
+// ---------------------------
 app.get("/", (req, res) => {
-  res.send("BIKA STORE API is running...");
+  res.json({
+    status: "OK",
+    service: "BIKA Store API",
+    version: "1.0.0",
+    author: "OfficialBika"
+  });
 });
 
-app.listen(ENV.PORT, () =>
-  console.log(`🚀 API running on port ${ENV.PORT}`)
-);
+// API groups
+app.use("/api/orders", orderRoutes);
+app.use("/api/reviews", reviewRoutes);
+app.use("/api/payments", paymentRoutes);
+
+// Telegram bot webhook route
+app.use("/bot", botRoutes);
+
+
+// ---------------------------
+//   HANDLE 404
+// ---------------------------
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
+
+
+// ---------------------------
+//   START SERVER
+// ---------------------------
+app.listen(PORT, () => {
+  console.log(`🚀 BIKA API running on port ${PORT}`);
+});
