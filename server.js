@@ -8,7 +8,7 @@ import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import connectMongo from "./db/mongo.js";
+import connectMongo from "./db/mongo.js";   // ✅ Correct import name
 
 // Routes
 import orderRoutes from "./routes/orders.js";
@@ -31,7 +31,6 @@ const __dirname = path.dirname(__filename);
 //   MIDDLEWARES
 // ---------------------------
 
-// Allow web client to call APIs
 app.use(cors({
   origin: process.env.WEB_ORIGIN || "*",
   methods: ["GET", "POST", "PUT", "DELETE"],
@@ -42,19 +41,18 @@ app.use(cors({
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Static for uploaded payments
+// Static folder for payment slip uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
 
 // ---------------------------
 //   CONNECT DATABASE
 // ---------------------------
-connectDB();
-
+connectMongo();   // ✅ Correct function name
 
 // ---------------------------
 //   ROUTES
 // ---------------------------
+
 app.get("/", (req, res) => {
   res.json({
     status: "OK",
@@ -64,14 +62,10 @@ app.get("/", (req, res) => {
   });
 });
 
-// API groups
 app.use("/api/orders", orderRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
-
-// Telegram bot webhook route
 app.use("/bot", botRoutes);
-
 
 // ---------------------------
 //   HANDLE 404
@@ -79,7 +73,6 @@ app.use("/bot", botRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
 });
-
 
 // ---------------------------
 //   START SERVER
