@@ -1,42 +1,93 @@
+// --------------------------------------
+//  BIKA STORE — Order Routes (Website)
+// --------------------------------------
+
 import express from "express";
 import Order from "../models/Order.js";
-import { notifyAdmin, notifyUser } from "../bot/notify.js";
+import axios from "axios";
 
 const router = express.Router();
 
-// CREATE ORDER
-router.post("/", async (req, res) => {
+// Auto increment orderId
+let lastOrderId = Date.now();
+
+// Create order from Website
+router.post("/create", async (req, res) => {
   try {
-    const order = await Order.create(req.body);
+    const { userId, username, game, mlbbId, mlbbServerId, pubgId, packageName, price } = req.body;
 
-    await notifyAdmin(
-      `🆕 *New Order Incoming!*\n\nGame: ${order.game}\nPackage: ${order.package}\nPrice: ${order.price} Ks\n\nUser: @${order.telegramUsername}`
-    );
+    if (!userId || !game || !packageName || !price) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
 
-    res.json({ success: true, order });
+    // Generate order ID
+    const orderId = ++lastOrderId;
+
+    const order = await Order.create({
+      orderId,
+      userId,
+      username,
+      game,
+      mlbbId,
+      mlbbServerId,
+      pubgId,
+      packageName,
+      price,
+      status: "WAITING_SLIP"
+    });
+
+    // Forward order to bot admin panel
+    await axios.post(`${process.env.API_BASE_URL}/bot/order`, {
+      orderId,
+      userId,
+      username,
+      game,
+      mlbbId,
+      mlbbServerId,
+      pubgId,
+      packageName,
+      price
+    });
+
+    return res.json({ success: true, order });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Order failed." });
+    console.error("Order create error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// CONFIRM ORDER
-router.post("/confirm/:id", async (req, res) => {
+// Get user orders (website)
+router.get("/user/:id", async (req, res) => {
   try {
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      { status: "CONFIRMED" },
-      { new: true }
-    );
-
-    await notifyUser(
-      order.telegramUserId,
-      `🎉 *Your Order is Confirmed!*\n\nPackage: ${order.package}\nPrice: ${order.price} Ks`
-    );
-
-    res.json({ success: true, order });
+    const orders = await Order.find({ userId: req.params.id }).sort({ createdAt: -1 });
+    res.json({ orders });
   } catch (err) {
-    res.status(500).json({ error: "Confirm failed." });
+    res.status(500).json({ error: "fetch failed" });
+  }
+});
+
+// Admin confirm / reject from website
+router.post("/update-status", async (req, res) => {
+  try {
+    const { orderId, status } = req.body;
+
+    const order = await Order.findOne({ orderId });
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    order.status = status;
+    order.confirmedAt = new Date();
+    await order.save();
+
+    // Notify bot
+    await axios.post(`${process.env.API_BASE_URL}/bot/status-update`, {
+      orderId,
+      status
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Status update error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
