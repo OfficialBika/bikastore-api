@@ -8,7 +8,7 @@ import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import connectDB from "./db/connect.js";
+import connectMongo from "./db/mongo.js";
 
 // Routes
 import orderRoutes from "./routes/orders.js";
