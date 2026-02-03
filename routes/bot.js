@@ -29,30 +29,56 @@ const TELEGRAM_URL = BOT_TOKEN
 // --------------------------------------
 
 router.post("/webhook", async (req, res) => {
-  console.log("📨 Telegram update:", JSON.stringify(req.body, null, 2));
+  const update = req.body;
+  const message = update.message;
 
   try {
-    const update = req.body;
-    const message = update.message;
+    if (!message || !message.chat) {
+      return res.status(200).send("OK");
+    }
 
-    // Basic echo test (အခုအတွက် စမ်းဖို့သုံးမယ်)
-    if (message && message.text && TELEGRAM_URL) {
-      const chatId = message.chat.id;
-      const text = message.text;
+    const chatId = message.chat.id;
+    const text = message.text || "";
 
+    // /start ကို handle
+    if (text === "/start") {
       await axios.post(`${TELEGRAM_URL}/sendMessage`, {
         chat_id: chatId,
-        text: `🔁 Echo from API: ${text}`,
+        text:
+          "👋 Welcome to BIKA Store!\n\n" +
+          "MLBB / PUBG / Telegram Premium / Stars ကို ဒီနေရာမှာ တစ်ခုတည်းလုံး order လုပ်လို့ရပါတယ်.\n\n" +
+          "👉 /menu လို့ရိုက်ပြီး ပစ္စည်းစာရင်းကို ကြည့်ပါ။"
+      });
+    }
+
+    // /menu ကို handle (နောက်ပိုင်းမှာ Inline Keyboard တွေထည့်သွားရမယ်)
+    else if (text === "/menu") {
+      await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+        chat_id: chatId,
+        text:
+          "📦 BIKA Store Menu\n\n" +
+          "1️⃣ MLBB Diamonds / Weekly Pass\n" +
+          "2️⃣ PUBG UC\n" +
+          "3️⃣ Telegram Premium / Stars\n\n" +
+          "အခုတော့ Website ကနေ သွားဝယ်ရမှာ ဖြစ်တယ်.\n" +
+          "👉 https://bikastore-web.onrender.com"
+      });
+    }
+
+    // အခြား message တွေအတွက် default reply (ချင်ရင်ပဲထား)
+    else {
+      await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+        chat_id: chatId,
+        text: `🔁 Echo from API: ${text}`
       });
     }
   } catch (err) {
     console.error("Webhook handler error:", err.message);
   }
 
-  // Telegram ကို အမြန် OK ပြန်ပို့ပေးရမယ်
+  // Telegram ကို အမြန် OK ပြန်ပို့
   res.status(200).send("OK");
 });
-
 // --------------------------------------
 //  Web ➝ Admin (order info ပို့တာ)
 //  URL: POST /bot/order
