@@ -1,5 +1,5 @@
 // --------------------------------------
-//  BIKA STORE — BOT CONNECTOR + WEBHOOK
+//  BIKA STORE — BOT WEBHOOK ROUTER
 // --------------------------------------
 
 import express from "express";
@@ -9,38 +9,40 @@ const router = express.Router();
 
 // ENV
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const ADMIN = process.env.BOT_ADMIN_ID;
-const API_BASE_URL = process.env.API_BASE_URL || "https://bikastore-api.onrender.com";
+const TELEGRAM_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-if (!BOT_TOKEN) {
-  console.warn("⚠️ BOT_TOKEN is missing. Bot routes will NOT work correctly.");
-}
-if (!ADMIN) {
-  console.warn("⚠️ BOT_ADMIN_ID is missing. Admin notifications will fail.");
-}
-
-const TELEGRAM_URL = BOT_TOKEN
-  ? `https://api.telegram.org/bot${BOT_TOKEN}`
-  : null;
+// In-memory user state (STEP CONTROL)
+const userState = {};
 
 // --------------------------------------
-//  Telegram Webhook (Telegram ➝ API)
-//  URL: POST /bot/webhook
+//  TELEGRAM WEBHOOK
 // --------------------------------------
-
-// ------------------------------
-//  MENU COMMAND
-// ------------------------------
 router.post("/webhook", async (req, res) => {
   try {
     const update = req.body;
 
-    // Message
+    // ==============================
+    // MESSAGE HANDLER
+    // ==============================
     if (update.message) {
       const chatId = update.message.chat.id;
       const text = update.message.text;
 
-      // /menu command
+      // -------- /start --------
+      if (text === "/start") {
+        await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+          chat_id: chatId,
+          text:
+            "👋 Welcome to *BIKA Store!*\n\n" +
+            "MLBB / PUBG / Telegram Premium / Stars ကို အလွယ်တကူ order လုပ်နိုင်ပါတယ်။\n\n" +
+            "👉 */menu* ကိုရိုက်ပြီး စတင်ပါ။",
+          parse_mode: "Markdown"
+        });
+
+        return res.sendStatus(200);
+      }
+
+      // -------- /menu --------
       if (text === "/menu") {
         await axios.post(`${TELEGRAM_URL}/sendMessage`, {
           chat_id: chatId,
@@ -48,164 +50,150 @@ router.post("/webhook", async (req, res) => {
           parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
-              [
-                { text: "💎 MLBB Diamonds", callback_data: "MLBB" }
-              ],
-              [
-                { text: "🔫 PUBG UC", callback_data: "PUBG" }
-              ],
-              [
-                { text: "⭐ Telegram Premium / Stars", callback_data: "TG_PREMIUM" }
-              ],
-              [
-                {
-                  text: "🌐 Open Website",
-                  url: "https://bikastore-web.onrender.com"
-                }
-              ]
+              [{ text: "💎 MLBB Diamonds", callback_data: "MLBB" }],
+              [{ text: "🔫 PUBG UC", callback_data: "PUBG" }],
+              [{ text: "⭐ Telegram Premium / Stars", callback_data: "TG_PREMIUM" }],
+              [{ text: "🌐 Open Website", url: "https://bikastore-web.onrender.com" }]
             ]
           }
         });
+
+        return res.sendStatus(200);
+      }
+
+      // -------- STEP HANDLING --------
+      const state = userState[chatId];
+
+      // MLBB ID
+      if (state?.step === "WAITING_MLBB_ID") {
+        state.mlbbId = text;
+        state.step = "WAITING_MLBB_SERVER";
+
+        await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+          chat_id: chatId,
+          text: "📍 MLBB Server ID (SV ID) ကို ထည့်ပေးပါ"
+        });
+
+        return res.sendStatus(200);
+      }
+
+      // MLBB SERVER ID
+      if (state?.step === "WAITING_MLBB_SERVER") {
+        state.serverId = text;
+        state.step = "WAITING_MLBB_PACKAGE";
+
+        await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+          chat_id: chatId,
+          text: "📦 Package ကို ရွေးပါ",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "86 💎", callback_data: "PKG_86" }],
+              [{ text: "172 💎", callback_data: "PKG_172" }],
+              [{ text: "Weekly Pass", callback_data: "PKG_WEEKLY" }]
+            ]
+          }
+        });
+
+        return res.sendStatus(200);
+      }
+
+      // PUBG ID
+      if (state?.step === "WAITING_PUBG_ID") {
+        state.pubgId = text;
+        state.step = "WAITING_PUBG_PACKAGE";
+
+        await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+          chat_id: chatId,
+          text: "📦 PUBG UC Package ကို ရွေးပါ",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "60 UC", callback_data: "PUBG_60" }],
+              [{ text: "325 UC", callback_data: "PUBG_325" }],
+              [{ text: "660 UC", callback_data: "PUBG_660" }]
+            ]
+          }
+        });
+
+        return res.sendStatus(200);
       }
     }
 
-    // Callback Button Click
+    // ==============================
+    // CALLBACK QUERY HANDLER
+    // ==============================
     if (update.callback_query) {
       const chatId = update.callback_query.message.chat.id;
       const data = update.callback_query.data;
 
-      let reply = "";
+      // -------- GAME SELECT --------
+      if (data === "MLBB") {
+        userState[chatId] = {
+          step: "WAITING_MLBB_ID",
+          game: "MLBB"
+        };
 
-      if (data === "MLBB") reply = "💎 MLBB Diamonds ကိုရွေးထားပါတယ်";
-      if (data === "PUBG") reply = "🔫 PUBG UC ကိုရွေးထားပါတယ်";
-      if (data === "TG_PREMIUM") reply = "⭐ Telegram Premium / Stars ကိုရွေးထားပါတယ်";
-
-      if (reply) {
         await axios.post(`${TELEGRAM_URL}/sendMessage`, {
           chat_id: chatId,
-          text: reply
+          text: "💎 MLBB ID ကို ထည့်ပေးပါ"
+        });
+      }
+
+      if (data === "PUBG") {
+        userState[chatId] = {
+          step: "WAITING_PUBG_ID",
+          game: "PUBG"
+        };
+
+        await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+          chat_id: chatId,
+          text: "🔫 PUBG ID ကို ထည့်ပေးပါ"
+        });
+      }
+
+      // -------- MLBB PACKAGE --------
+      if (data.startsWith("PKG_")) {
+        const state = userState[chatId];
+        if (!state) return res.sendStatus(200);
+
+        state.package = data.replace("PKG_", "");
+
+        await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+          chat_id: chatId,
+          text:
+            "✅ *Order Summary*\n\n" +
+            `Game: MLBB\n` +
+            `MLBB ID: ${state.mlbbId}\n` +
+            `Server ID: ${state.serverId}\n` +
+            `Package: ${state.package}\n\n` +
+            "📸 Payment slip ပို့ပါ။",
+          parse_mode: "Markdown"
+        });
+      }
+
+      // -------- PUBG PACKAGE --------
+      if (data.startsWith("PUBG_")) {
+        const state = userState[chatId];
+        if (!state) return res.sendStatus(200);
+
+        state.package = data.replace("PUBG_", "");
+
+        await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+          chat_id: chatId,
+          text:
+            "✅ *Order Summary*\n\n" +
+            `Game: PUBG\n` +
+            `PUBG ID: ${state.pubgId}\n` +
+            `Package: ${state.package} UC\n\n` +
+            "📸 Payment slip ပို့ပါ။",
+          parse_mode: "Markdown"
         });
       }
     }
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("Webhook error:", err);
+    console.error("Webhook Error:", err);
     res.sendStatus(500);
-  }
-});
-// --------------------------------------
-//  Web ➝ Admin (order info ပို့တာ)
-//  URL: POST /bot/order
-// --------------------------------------
-
-router.post("/order", async (req, res) => {
-  if (!TELEGRAM_URL || !ADMIN) {
-    return res
-      .status(500)
-      .json({ error: "BOT_TOKEN or BOT_ADMIN_ID not set" });
-  }
-
-  try {
-    const {
-      orderId,
-      userId,
-      username,
-      game,
-      mlbbId,
-      mlbbServerId,
-      pubgId,
-      packageName,
-      price,
-    } = req.body;
-
-    const caption =
-      `🆕 New Web Order\n` +
-      `Order ID: ${orderId}\n` +
-      `User: @${username || "unknown"} (${userId})\n\n` +
-      `Game: ${game}\n` +
-      (game === "MLBB"
-        ? `MLBB ID: ${mlbbId}\nSV ID: ${mlbbServerId}\n`
-        : `PUBG ID: ${pubgId}\n`) +
-      `Package: ${packageName}\n` +
-      `Price: ${price} Ks\n\n` +
-      `Waiting for slip.`;
-
-    await axios.post(`${TELEGRAM_URL}/sendMessage`, {
-      chat_id: ADMIN,
-      text: caption,
-    });
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Bot order send error:", err.message);
-    res.status(500).json({ error: "Bot send failed" });
-  }
-});
-
-// --------------------------------------
-//  Web ➝ Admin (payment slip ပို့တာ)
-//  URL: POST /bot/slip
-// --------------------------------------
-
-router.post("/slip", async (req, res) => {
-  if (!TELEGRAM_URL || !ADMIN) {
-    return res
-      .status(500)
-      .json({ error: "BOT_TOKEN or BOT_ADMIN_ID not set" });
-  }
-
-  try {
-    const { orderId, userId, filePath } = req.body;
-
-    const text = `📸 Payment Slip Received\nOrder ID: ${orderId}\nFrom User: ${userId}`;
-    const photoUrl = API_BASE_URL + filePath; // e.g. https://bikastore-api.onrender.com/uploads/payments/xxx.png
-
-    await axios.post(`${TELEGRAM_URL}/sendPhoto`, {
-      chat_id: ADMIN,
-      photo: photoUrl,
-      caption: text,
-    });
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Slip send error:", err.message);
-    res.status(500).json({ error: "Bot send failed" });
-  }
-});
-
-// --------------------------------------
-//  Admin Panel ➝ User (status update)
-//  URL: POST /bot/status-update
-// --------------------------------------
-
-router.post("/status-update", async (req, res) => {
-  if (!TELEGRAM_URL) {
-    return res.status(500).json({ error: "BOT_TOKEN not set" });
-  }
-
-  try {
-    const { orderId, status, userId } = req.body;
-
-    let msg = "";
-    if (status === "COMPLETED")
-      msg = `🎉 Your order ${orderId} is completed! Thank you.`;
-    if (status === "REJECTED")
-      msg = `❌ Your order ${orderId} was rejected.\nPlease contact support if you think this is a mistake.`;
-
-    if (!msg) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
-
-    await axios.post(`${TELEGRAM_URL}/sendMessage`, {
-      chat_id: userId,
-      text: msg,
-    });
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Bot update error:", err.message);
-    res.status(500).json({ error: "Bot notify failed" });
   }
 });
 
