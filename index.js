@@ -293,7 +293,7 @@ bot.onText(/^\/start(?:\s+(.+))?/, async (msg, match) => {
             [
               {
                 text: "🌐 Open Web Store",
-                url: WEB_URL,
+                web_app: { url: WEB_URL },
               },
             ],
           ],
