@@ -14,6 +14,7 @@ const {
   MONGO_URI,
   PORT = 3000,
   PUBLIC_BOT_USERNAME,
+  FRONTEND_URL,
 } = process.env;
 
 if (!BOT_TOKEN) {
@@ -37,6 +38,7 @@ mongoose
     console.error("❌ MongoDB connection error:", err);
     process.exit(1);
   });
+
 
 // ================ ORDER MODEL ===========
 const ItemSchema = new mongoose.Schema(
@@ -265,29 +267,42 @@ app.post("/api/orders/web-order", async (req, res) => {
 
 // ================ BOT HANDLERS ==========
 
-// /start web_xxx handler
+
+// FRONTEND_URL ကို .env ထဲသတ်မှတ်ထားတယ်ဆိုရင်
+const WEB_URL = FRONTEND_URL || "https://bikastore-web.onrender.com"; // မသတ်မှတ်ရင် backup link
+
+// /start handler
 bot.onText(/^\/start(?:\s+(.+))?/, async (msg, match) => {
   try {
     const chatId = msg.chat.id;
     const payload = match[1];
 
+    // 🌐 normal /start (no web_ payload)
     if (!payload || !payload.startsWith("web_")) {
-      // normal /start
       const text = [
         "👋 BIKA Store Bot ထဲသို့ ကြိုဆိုပါတယ်။",
         "",
-        "Web မှာ order လုပ်ပြီးသားဖြစ်ရင်:",
-        "➡️ Web ပေါ်က `Open in Telegram` / `Go to Bot` ကို နှိပ်ပြီး ဒီမှာ ပြန်ဝင်ပါ။",
-        "",
-        "အသစ် Order လုပ်ဖို့ Web ကိုသွားချင်ရင်:",
-        PUBLIC_BOT_USERNAME
-          ? `🌐 Web: https://your-frontend-url-here`
-          : "",
+        "Web မှာ Order လုပ်ချင်ရင် အောက်က Web Store button ကိုနှိပ်ပါ။",
+        "Web ပေါ်မှာ Item တွေသတ်မှတ်သွားပြီးရင်",
+        "Open in Telegram / Go to Bot ကိုနှိပ်ပြီး ဒီ Bot ထဲကို ပြန်ဝင်ပါ။",
       ].join("\n");
-      await bot.sendMessage(chatId, text);
+
+      await bot.sendMessage(chatId, text, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🌐 Open Web Store",
+                url: WEB_URL,
+              },
+            ],
+          ],
+        },
+      });
       return;
     }
 
+    // 🔗 /start web_xxxxx (web-order link ကနေသွားရာ)
     const token = payload.slice(4); // remove "web_"
     const order = await Order.findOne({ startToken: token });
 
@@ -299,12 +314,12 @@ bot.onText(/^\/start(?:\s+(.+))?/, async (msg, match) => {
       return;
     }
 
-    // Attach user info
+    // User info ချိတ်
     order.userId = chatId;
     order.username = msg.from?.username || "";
     await order.save();
 
-    // Build preview
+    // Items string
     const itemsList = order.items
       .map(
         (i) =>
