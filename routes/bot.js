@@ -28,56 +28,71 @@ const TELEGRAM_URL = BOT_TOKEN
 //  URL: POST /bot/webhook
 // --------------------------------------
 
+// ------------------------------
+//  MENU COMMAND
+// ------------------------------
 router.post("/webhook", async (req, res) => {
-  const update = req.body;
-  const message = update.message;
-
   try {
-    if (!message || !message.chat) {
-      return res.status(200).send("OK");
+    const update = req.body;
+
+    // Message
+    if (update.message) {
+      const chatId = update.message.chat.id;
+      const text = update.message.text;
+
+      // /menu command
+      if (text === "/menu") {
+        await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+          chat_id: chatId,
+          text: "📦 *BIKA Store Menu*",
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "💎 MLBB Diamonds", callback_data: "MLBB" }
+              ],
+              [
+                { text: "🔫 PUBG UC", callback_data: "PUBG" }
+              ],
+              [
+                { text: "⭐ Telegram Premium / Stars", callback_data: "TG_PREMIUM" }
+              ],
+              [
+                {
+                  text: "🌐 Open Website",
+                  url: "https://bikastore-web.onrender.com"
+                }
+              ]
+            ]
+          }
+        });
+      }
     }
 
-    const chatId = message.chat.id;
-    const text = message.text || "";
+    // Callback Button Click
+    if (update.callback_query) {
+      const chatId = update.callback_query.message.chat.id;
+      const data = update.callback_query.data;
 
-    // /start ကို handle
-    if (text === "/start") {
-      await axios.post(`${TELEGRAM_URL}/sendMessage`, {
-        chat_id: chatId,
-        text:
-          "👋 Welcome to BIKA Store!\n\n" +
-          "MLBB / PUBG / Telegram Premium / Stars ကို ဒီနေရာမှာ တစ်ခုတည်းလုံး order လုပ်လို့ရပါတယ်.\n\n" +
-          "👉 /menu လို့ရိုက်ပြီး ပစ္စည်းစာရင်းကို ကြည့်ပါ။"
-      });
+      let reply = "";
+
+      if (data === "MLBB") reply = "💎 MLBB Diamonds ကိုရွေးထားပါတယ်";
+      if (data === "PUBG") reply = "🔫 PUBG UC ကိုရွေးထားပါတယ်";
+      if (data === "TG_PREMIUM") reply = "⭐ Telegram Premium / Stars ကိုရွေးထားပါတယ်";
+
+      if (reply) {
+        await axios.post(`${TELEGRAM_URL}/sendMessage`, {
+          chat_id: chatId,
+          text: reply
+        });
+      }
     }
 
-    // /menu ကို handle (နောက်ပိုင်းမှာ Inline Keyboard တွေထည့်သွားရမယ်)
-    else if (text === "/menu") {
-      await axios.post(`${TELEGRAM_URL}/sendMessage`, {
-        chat_id: chatId,
-        text:
-          "📦 BIKA Store Menu\n\n" +
-          "1️⃣ MLBB Diamonds / Weekly Pass\n" +
-          "2️⃣ PUBG UC\n" +
-          "3️⃣ Telegram Premium / Stars\n\n" +
-          "အခုတော့ Website ကနေ သွားဝယ်ရမှာ ဖြစ်တယ်.\n" +
-          "👉 https://bikastore-web.onrender.com"
-      });
-    }
-
-    // အခြား message တွေအတွက် default reply (ချင်ရင်ပဲထား)
-    else {
-      await axios.post(`${TELEGRAM_URL}/sendMessage`, {
-        chat_id: chatId,
-        text: `🔁 Echo from API: ${text}`
-      });
-    }
+    res.sendStatus(200);
   } catch (err) {
-    console.error("Webhook handler error:", err.message);
+    console.error("Webhook error:", err);
+    res.sendStatus(500);
   }
-
-  // Telegram ကို အမြန် OK ပြန်ပို့
-  res.status(200).send("OK");
 });
 // --------------------------------------
 //  Web ➝ Admin (order info ပို့တာ)
