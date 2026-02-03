@@ -1,44 +1,23 @@
-// ------------------------------
-//  BIKA STORE — Order Model
-// ------------------------------
-
 import mongoose from "mongoose";
 
-const OrderSchema = new mongoose.Schema(
-  {
-    orderId: { type: Number, required: true, unique: true },
+const OrderSchema = new mongoose.Schema({
+  orderId: Number,
+  userId: Number,
+  username: String,
 
-    // User info
-    userId: { type: Number, required: true },
-    username: { type: String },
+  game: String,
+  packageName: String,
+  price: Number,
 
-    // Game type
-    game: { type: String, enum: ["MLBB", "PUBG"], required: true },
+  paymentSlip: String,
 
-    // Game details
-    mlbbId: { type: String },
-    mlbbServerId: { type: String },
-    pubgId: { type: String },
-
-    // Package
-    packageName: { type: String, required: true },
-    price: { type: Number, required: true },
-
-    // Payment
-    paymentSlip: { type: String }, // file path or telegram file_id
-    paidAt: { type: Date },
-
-    // Status
-    status: {
-      type: String,
-      enum: ["PENDING", "WAITING_SLIP", "PENDING_CONFIRM", "COMPLETED", "REJECTED"],
-      default: "PENDING",
-    },
-
-    // Timestamps
-    confirmedAt: { type: Date },
+  status: {
+    type: String,
+    enum: ["PENDING", "PENDING_CONFIRM", "COMPLETED", "REJECTED"],
+    default: "PENDING"
   },
-  { timestamps: true }
-);
+
+  confirmedAt: Date
+}, { timestamps: true });
 
 export default mongoose.model("Order", OrderSchema);
