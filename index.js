@@ -1,756 +1,545 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>BIKA STORE — MLBB & PUBG Top-up</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+// index.js
+import dotenv from "dotenv";
+dotenv.config();
 
-  <!-- Tailwind CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+import express from "express";
+import cors from "cors";
+import mongoose from "mongoose";
+import TelegramBot from "node-telegram-bot-api";
 
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: "#6A5DE8",
-            secondary: "#00A6FF",
-            glass: "rgba(255,255,255,0.08)"
-          },
-          boxShadow: {
-            neon: "0 0 20px rgba(0,166,255,0.6)",
-            glow: "0 0 25px rgba(106,93,232,0.7)"
-          }
-        }
-      }
-    }
-  </script>
+// ================ ENV =================
+const {
+  BOT_TOKEN,
+  ADMIN_CHAT_ID,
+  MONGO_URI,
+  PORT = 3000,
+  PUBLIC_BOT_USERNAME,
+  FRONTEND_URL,
+} = process.env;
 
-  <style>
-    body {
-      background: #0A0F1F;
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-
-    #topHeader {
-      position: sticky;
-      top: 0;
-      z-index: 40;
-      transition: transform 0.25s ease, opacity 0.25s ease, box-shadow 0.25s ease;
-    }
-
-    .header-hidden {
-      transform: translateY(-100%);
-      opacity: 0;
-      box-shadow: none;
-    }
-  </style>
-</head>
-
-<body class="text-white">
-
-<!-- Toast (Added to cart) -->
-<div id="toast"
-     class="fixed left-1/2 bottom-6 z-50 -translate-x-1/2 px-4 py-2 bg-black/80 text-xs rounded-full shadow-neon opacity-0 pointer-events-none transition-opacity duration-200">
-  <span id="toastText">Added to cart</span>
-</div>
-
-<!-- HEADER -->
-<div id="topHeader" class="w-full p-4 bg-gradient-to-r from-primary to-secondary rounded-b-3xl shadow-glow">
-  <div class="max-w-xl mx-auto flex justify-between items-center gap-3">
-    <div>
-      <h1 class="text-3xl font-bold tracking-wide">BIKA STORE</h1>
-      <p id="txtSubtitle" class="opacity-80 text-sm">MLBB Diamonds & PUBG UC</p>
-    </div>
-
-    <div class="flex items-center gap-2">
-      <!-- Language switch -->
-      <button id="btnLang"
-        class="px-3 py-1 rounded-full bg-white/20 backdrop-blur text-xs font-semibold hover:bg-white/30 transition"
-        onclick="toggleLanguage()">
-        MM
-      </button>
-
-      <!-- For browser use / outside Telegram -->
-      <a id="btnOpenBot"
-        href="https://t.me/BikaStoreBot"
-        class="px-3 py-2 bg-white/20 backdrop-blur-md rounded-xl shadow-neon hover:bg-white/30 transition text-xs">
-        Open Bot
-      </a>
-    </div>
-  </div>
-</div>
-
-<!-- MAIN APP -->
-<div class="p-5 pt-4 max-w-xl mx-auto" id="app">
-
-  <!-- STEP 1 — SELECT ITEMS -->
-  <div id="step1">
-    <div class="flex items-center justify-between mt-2 mb-3">
-      <h2 id="txtSelectTitle" class="text-xl font-bold">🎮 Select Game & Package</h2>
-      <!-- Back Menu (reset all) -->
-      <button id="btnReset"
-        onclick="resetAll()"
-        class="text-xs px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 transition">
-        Reset
-      </button>
-    </div>
-
-    <!-- GAME TABS -->
-    <div class="flex gap-2 mb-4">
-      <button
-        id="tabMLBB"
-        class="flex-1 py-2 rounded-xl bg-white/20 backdrop-blur shadow-neon font-semibold text-center text-sm"
-        onclick="setGame('MLBB')">
-        MLBB
-      </button>
-      <button
-        id="tabPUBG"
-        class="flex-1 py-2 rounded-xl bg-white/5 backdrop-blur font-semibold text-center text-sm"
-        onclick="setGame('PUBG')">
-        PUBG
-      </button>
-    </div>
-
-    <!-- DYNAMIC TITLE -->
-    <h2 id="priceTitle" class="text-lg font-semibold mb-2">
-      💎 MLBB Diamonds — Select Items
-    </h2>
-
-    <!-- PRICE LIST -->
-    <div id="priceList" class="grid grid-cols-2 gap-3"></div>
-
-    <!-- CART -->
-    <div class="mt-6">
-      <div class="flex items-center justify-between">
-        <h2 id="cartTitle" class="text-xl font-bold">🛒 Cart</h2>
-        <button id="btnClearCart"
-          onclick="clearCart()"
-          class="text-xs px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 transition">
-          Clear
-        </button>
-      </div>
-      <div id="cartList" class="mt-2"></div>
-    </div>
-
-    <!-- GAME ID FORMS -->
-    <div class="mt-6" id="mlbbFields">
-      <label id="lblMlbbId" class="block mb-1 text-sm">MLBB ID</label>
-      <input id="mlbbId" class="w-full p-3 bg-glass rounded-xl backdrop-blur shadow-glow text-sm" />
-
-      <label id="lblSvId" class="block mt-4 mb-1 text-sm">Server ID</label>
-      <input id="svId" class="w-full p-3 bg-glass rounded-xl backdrop-blur shadow-glow text-sm" />
-    </div>
-
-    <div class="mt-6 hidden" id="pubgFields">
-      <label id="lblPubgId" class="block mb-1 text-sm">PUBG ID</label>
-      <input id="pubgId" class="w-full p-3 bg-glass rounded-xl backdrop-blur shadow-glow text-sm" />
-    </div>
-
-    <!-- NEXT BUTTON -->
-    <button id="btnNext"
-      onclick="goStep2()"
-      class="w-full mt-6 py-3 bg-gradient-to-r from-primary to-secondary rounded-xl shadow-neon text-sm font-semibold">
-      Confirm Order (Step 2)
-    </button>
-  </div>
-
-  <!-- STEP 2 — PREVIEW & GO TO BOT -->
-  <div id="step2" class="hidden">
-    <h2 id="step2Title" class="text-xl font-bold mt-5 mb-3">📄 Order Preview</h2>
-    <div id="preview" class="p-4 bg-glass rounded-xl backdrop-blur shadow-glow text-sm"></div>
-
-    <h3 id="paymentTitle" class="text-lg mt-6 mb-2 font-semibold">💵 Payment Info</h3>
-    <div class="p-4 bg-glass rounded-xl backdrop-blur shadow-glow text-sm space-y-1">
-      <p id="kpayLine"><span class="font-semibold">KPay</span>: Shine Htet Aung (09 264 202 637)</p>
-      <p id="waveLine"><span class="font-semibold">WavePay</span>: Shine Htet Aung (09 264 202 637)</p>
-      <p id="paymentNote" class="opacity-70 text-xs mt-2 leading-relaxed">
-        ➜ Tap the button below to go to the Bot. In the Bot, send your payment slip photo and confirm.
-      </p>
-    </div>
-
-    <button id="btnConfirmGo"
-      onclick="confirmOrderAndOpenBot()"
-      class="w-full mt-6 py-3 bg-gradient-to-r from-primary to-secondary rounded-xl shadow-neon text-sm font-semibold">
-      ✅ Confirm & Go To Bot
-    </button>
-
-    <button id="btnBackMenu"
-      onclick="backToStep1()"
-      class="w-full mt-3 py-2 bg-white/5 rounded-xl text-sm">
-      ⬅️ Back Menu
-    </button>
-  </div>
-
-  <!-- REVIEW BOX -->
-  <div id="reviewBox"
-       class="mt-8 p-4 bg-glass rounded-2xl backdrop-blur shadow-glow text-sm">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <h3 id="txtReviewTitle" class="font-semibold text-sm">⭐ Reviews</h3>
-        <p id="txtReviewHint" class="text-xs opacity-70 mt-1">
-          See what other players say about BIKA STORE.
-        </p>
-      </div>
-      <a id="btnReview"
-         href="https://t.me/BikaStoreBot?start=review"
-         class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-semibold transition">
-        Open Reviews
-      </a>
-    </div>
-  </div>
-
-</div>
-
-<script>
-// =================== CONFIG =====================
-// API base URL (backend)
-const API_BASE = "https://bikastore-api.onrender.com";
-
-// =================== I18N =======================
-const i18n = {
-  en: {
-    subtitle: "MLBB Diamonds & PUBG UC",
-    openBot: "Open Bot",
-    langShort: "EN",
-
-    selectTitle: "🎮 Select Game & Package",
-    reset: "Reset",
-    mlbbTab: "MLBB",
-    pubgTab: "PUBG",
-
-    priceTitleMLBB: "💎 MLBB Diamonds — Select Items",
-    priceTitlePUBG: "🥤 PUBG UC — Select Items",
-    sectionDiamonds: "Diamonds",
-    sectionWeekly: "Weekly / Web / MEB",
-    sectionUc: "UC Packages",
-    sectionPrime: "Prime",
-
-    cartTitle: "🛒 Cart",
-    clearCart: "Clear",
-    cartEmpty: "Cart is empty. Please add some items.",
-    totalLabel: "Total:",
-
-    lblMlbbId: "MLBB ID",
-    lblSvId: "Server ID",
-    lblPubgId: "PUBG ID",
-
-    btnNext: "Confirm Order (Step 2)",
-
-    step2Title: "📄 Order Preview",
-    paymentTitle: "💵 Payment Info",
-    kpayLine: "KPay: Shine Htet Aung (09 264 202 637)",
-    waveLine: "WavePay: Shine Htet Aung (09 264 202 637)",
-    paymentNote:
-      "➜ Tap the button below to go to the Bot. In the Bot, send your payment slip photo and confirm.",
-
-    btnConfirmGo: "✅ Confirm & Go To Bot",
-    btnBackMenu: "⬅️ Back Menu",
-
-    previewItemsTitle: "Items:",
-    previewTotalLabel: "Total:",
-
-    toastAddedPrefix: "Added:",
-
-    alertAddItem: "Please add at least one item to cart.",
-    alertFillMlbb: "Please fill MLBB ID and Server ID.",
-    alertFillPubg: "Please fill PUBG ID.",
-    alertCartEmpty: "Cart is empty.",
-    alertServerError: "Server error, please try again.",
-    alertNetworkError: "Network error, please try again.",
-
-    reviewTitle: "⭐ Reviews",
-    reviewHint: "See what other players say about BIKA STORE.",
-    reviewButton: "Open Reviews",
-  },
-  mm: {
-    subtitle: "MLBB Diamonds & PUBG UC",
-    openBot: "Bot ဖွင့်ရန်",
-    langShort: "MM",
-
-    selectTitle: "🎮 ဂိမ်းနဲ့ Package ရွေးချယ်ရန်",
-    reset: "ပြန်စမည်",
-    mlbbTab: "MLBB",
-    pubgTab: "PUBG",
-
-    priceTitleMLBB: "💎 MLBB Diamonds — Item ရွေးချယ်ရန်",
-    priceTitlePUBG: "🥤 PUBG UC — Item ရွေးချယ်ရန်",
-    sectionDiamonds: "Diamonds",
-    sectionWeekly: "Weekly / Web / MEB",
-    sectionUc: "UC Packages",
-    sectionPrime: "Prime",
-
-    cartTitle: "🛒 စျေးခြင်းတောင်း",
-    clearCart: "ဖျက်မည်",
-    cartEmpty: "စျေးခြင်းတောင်းထဲ Item မရှိသေးပါ။ အနည်းဆုံး Item တစ်ခု ထည့်ပေးပါ။",
-    totalLabel: "စုစုပေါင်း:",
-
-    lblMlbbId: "MLBB ID",
-    lblSvId: "Server ID",
-    lblPubgId: "PUBG ID",
-
-    btnNext: "Order အတည်ပြုရန် (Step 2)",
-
-    step2Title: "📄 Order အသေးစိတ်",
-    paymentTitle: "💵 ငွေပေးချေမှုပုံစံ",
-    kpayLine: "KPay: Shine Htet Aung (09 264 202 637)",
-    waveLine: "WavePay: Shine Htet Aung (09 264 202 637)",
-    paymentNote:
-      "➜ အောက်က button ကိုနှိပ်ပြီး Bot ထဲသို့ ဝင်ပါ။ Bot ထဲမှာ Slip ပုံကို ပို့ပြီး အော်ဒါအတည်ပြုရပါမယ်။",
-
-    btnConfirmGo: "✅ အတည်ပြုပြီး Bot သို့သွားမည်",
-    btnBackMenu: "⬅️ နောက်သို့",
-
-    previewItemsTitle: "Items:",
-    previewTotalLabel: "စုစုပေါင်း:",
-
-    toastAddedPrefix: "ထည့်ပြီး:",
-
-    alertAddItem: "စျေးခြင်းတောင်းထဲ Item အနည်းဆုံး ၁ ခု ထည့်ပေးပါ။",
-    alertFillMlbb: "MLBB ID နဲ့ Server ID ကို ဖြည့်ပေးပါ။",
-    alertFillPubg: "PUBG ID ကို ဖြည့်ပေးပါ။",
-    alertCartEmpty: "စျေးခြင်းတောင်းထဲ Item မရှိသေးပါ။",
-    alertServerError: "Server မှာ အမှားတစ်ခု ဖြစ်နေပါတယ်။ နောက်တစ်ခါ ပြန်ကြိုးစားပေးပါ။",
-    alertNetworkError: "Network ပြဿနာ ဖြစ်နေပါတယ်။ နောက်တစ်ခါ ပြန်ကြိုးစားပေးပါ။",
-
-    reviewTitle: "⭐ ဝယ်ယူသူများ Review",
-    reviewHint: "အခြား Player များရဲ့ သုံးသပ်ချက်တွေကိုလည်း ကြည့်ရှုနိုင်ပါတယ်။",
-    reviewButton: "Review များကြည့်ရန်",
-  }
-};
-
-let currentLang = "mm";
-
-function t(key) {
-  const langPack = i18n[currentLang] || i18n.en;
-  return (langPack && langPack[key]) || i18n.en[key] || key;
+if (!BOT_TOKEN) {
+  console.error("❌ BOT_TOKEN is missing in .env");
+  process.exit(1);
+}
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI is missing in .env");
+  process.exit(1);
+}
+if (!ADMIN_CHAT_ID) {
+  console.warn("⚠️ ADMIN_CHAT_ID is not set. Admin notifications won't work.");
 }
 
-function applyLanguage() {
-  document.getElementById("txtSubtitle").textContent = t("subtitle");
-  document.getElementById("btnOpenBot").textContent = t("openBot");
-  document.getElementById("btnLang").textContent = t("langShort");
-
-  document.getElementById("txtSelectTitle").textContent = t("selectTitle");
-  document.getElementById("btnReset").textContent = t("reset");
-
-  document.getElementById("tabMLBB").textContent = t("mlbbTab");
-  document.getElementById("tabPUBG").textContent = t("pubgTab");
-
-  document.getElementById("cartTitle").textContent = t("cartTitle");
-  document.getElementById("btnClearCart").textContent = t("clearCart");
-
-  document.getElementById("lblMlbbId").textContent = t("lblMlbbId");
-  document.getElementById("lblSvId").textContent = t("lblSvId");
-  document.getElementById("lblPubgId").textContent = t("lblPubgId");
-  document.getElementById("btnNext").textContent = t("btnNext");
-
-  document.getElementById("step2Title").textContent = t("step2Title");
-  document.getElementById("paymentTitle").textContent = t("paymentTitle");
-  document.getElementById("kpayLine").textContent = t("kpayLine");
-  document.getElementById("waveLine").textContent = t("waveLine");
-  document.getElementById("paymentNote").textContent = t("paymentNote");
-
-  document.getElementById("btnConfirmGo").textContent = t("btnConfirmGo");
-  document.getElementById("btnBackMenu").textContent = t("btnBackMenu");
-
-  document.getElementById("txtReviewTitle").textContent = t("reviewTitle");
-  document.getElementById("txtReviewHint").textContent = t("reviewHint");
-  document.getElementById("btnReview").textContent = t("reviewButton");
-
-  // price title + list & cart re-render
-  renderPrices();
-  renderCart();
-}
-
-function toggleLanguage() {
-  currentLang = currentLang === "en" ? "mm" : "en";
-  applyLanguage();
-}
-
-// =================== PRODUCTS ====================
-const PRODUCTS = [
-  // MLBB Diamonds
-  { id: "mlbb_11",   game: "MLBB", category: "diamond", label: "11",   display: "11 Diamonds",   price: 800 },
-  { id: "mlbb_22",   game: "MLBB", category: "diamond", label: "22",   display: "22 Diamonds",   price: 1600 },
-  { id: "mlbb_33",   game: "MLBB", category: "diamond", label: "33",   display: "33 Diamonds",   price: 2350 },
-  { id: "mlbb_55",   game: "MLBB", category: "diamond", label: "55",   display: "55 Diamonds",   price: 3600 },
-  { id: "mlbb_86",   game: "MLBB", category: "diamond", label: "86",   display: "86 Diamonds",   price: 4800 },
-  { id: "mlbb_112",  game: "MLBB", category: "diamond", label: "112",  display: "112 Diamonds",  price: 8200 },
-  { id: "mlbb_172",  game: "MLBB", category: "diamond", label: "172",  display: "172 Diamonds",  price: 9800 },
-  { id: "mlbb_257",  game: "MLBB", category: "diamond", label: "257",  display: "257 Diamonds",  price: 14500 },
-  { id: "mlbb_343",  game: "MLBB", category: "diamond", label: "343",  display: "343 Diamonds",  price: 20000 },
-  { id: "mlbb_429",  game: "MLBB", category: "diamond", label: "429",  display: "429 Diamonds",  price: 25000 },
-  { id: "mlbb_514",  game: "MLBB", category: "diamond", label: "514",  display: "514 Diamonds",  price: 29900 },
-  { id: "mlbb_600",  game: "MLBB", category: "diamond", label: "600",  display: "600 Diamonds",  price: 34500 },
-  { id: "mlbb_706",  game: "MLBB", category: "diamond", label: "706",  display: "706 Diamonds",  price: 39900 },
-  { id: "mlbb_792",  game: "MLBB", category: "diamond", label: "792",  display: "792 Diamonds",  price: 44500 },
-  { id: "mlbb_878",  game: "MLBB", category: "diamond", label: "878",  display: "878 Diamonds",  price: 48500 },
-  { id: "mlbb_963",  game: "MLBB", category: "diamond", label: "963",  display: "963 Diamonds",  price: 53000 },
-  { id: "mlbb_1049", game: "MLBB", category: "diamond", label: "1049", display: "1049 Diamonds", price: 59900 },
-  { id: "mlbb_1135", game: "MLBB", category: "diamond", label: "1135", display: "1135 Diamonds", price: 63500 },
-  { id: "mlbb_1412", game: "MLBB", category: "diamond", label: "1412", display: "1412 Diamonds", price: 77000 },
-  { id: "mlbb_1584", game: "MLBB", category: "diamond", label: "1584", display: "1584 Diamonds", price: 88000 },
-  { id: "mlbb_1669", game: "MLBB", category: "diamond", label: "1669", display: "1669 Diamonds", price: 94000 },
-  { id: "mlbb_2195", game: "MLBB", category: "diamond", label: "2195", display: "2195 Diamonds", price: 118900 },
-  { id: "mlbb_3158", game: "MLBB", category: "diamond", label: "3158", display: "3158 Diamonds", price: 172000 },
-  { id: "mlbb_3688", game: "MLBB", category: "diamond", label: "3688", display: "3688 Diamonds", price: 202000 },
-  { id: "mlbb_4390", game: "MLBB", category: "diamond", label: "4390", display: "4390 Diamonds", price: 237000 },
-  { id: "mlbb_5100", game: "MLBB", category: "diamond", label: "5100", display: "5100 Diamonds", price: 280000 },
-  { id: "mlbb_5532", game: "MLBB", category: "diamond", label: "5532", display: "5532 Diamonds", price: 300000 },
-  { id: "mlbb_6055", game: "MLBB", category: "diamond", label: "6055", display: "6055 Diamonds", price: 330000 },
-
-  // MLBB Specials
-  { id: "mlbb_wp1", game: "MLBB", category: "special", label: "wp1", display: "Weekly Pass 1 (wp1)", price: 5900 },
-  { id: "mlbb_wp2", game: "MLBB", category: "special", label: "wp2", display: "Weekly Pass 2 (wp2)", price: 11800 },
-  { id: "mlbb_wp3", game: "MLBB", category: "special", label: "wp3", display: "Weekly Pass 3 (wp3)", price: 17700 },
-  { id: "mlbb_wp4", game: "MLBB", category: "special", label: "wp4", display: "Weekly Pass 4 (wp4)", price: 23600 },
-  { id: "mlbb_wp5", game: "MLBB", category: "special", label: "wp5", display: "Weekly Pass 5 (wp5)", price: 29500 },
-  { id: "mlbb_web", game: "MLBB", category: "special", label: "web", display: "WEB", price: 3500 },
-  { id: "mlbb_meb", game: "MLBB", category: "special", label: "meb", display: "MEB", price: 16500 },
-
-  // PUBG UC
-  { id: "pubg_60",   game: "PUBG", category: "uc",    label: "60",   display: "60 UC",   price: 4500 },
-  { id: "pubg_325",  game: "PUBG", category: "uc",    label: "325",  display: "325 UC",  price: 19500 },
-  { id: "pubg_660",  game: "PUBG", category: "uc",    label: "660",  display: "660 UC",  price: 38000 },
-  { id: "pubg_1800", game: "PUBG", category: "uc",    label: "1800", display: "1800 UC", price: 90500 },
-  { id: "pubg_3850", game: "PUBG", category: "uc",    label: "3850", display: "3850 UC", price: 185000 },
-  { id: "pubg_8100", game: "PUBG", category: "uc",    label: "8100", display: "8100 UC", price: 363000 },
-
-  // PUBG Prime
-  { id: "pubg_prime1m",  game: "PUBG", category: "prime", label: "prime1m",  display: "Prime 1 Month", price: 4500 },
-  { id: "pubg_primeplus", game: "PUBG", category: "prime", label: "primeplus", display: "Prime Plus",  price: 39500 },
-];
-
-function filterProducts(game, category) {
-  return PRODUCTS.filter(p => p.game === game && p.category === category);
-}
-
-// =================== STATE ====================
-let currentGame = "MLBB";
-let cart = [];
-let toastTimeout;
-
-// =================== TOAST ====================
-function showToast(message) {
-  const toast = document.getElementById("toast");
-  const text = document.getElementById("toastText");
-  if (!toast || !text) return;
-
-  text.textContent = message;
-  toast.classList.remove("opacity-0", "pointer-events-none");
-  toast.classList.add("opacity-100");
-
-  clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => {
-    toast.classList.add("opacity-0", "pointer-events-none");
-    toast.classList.remove("opacity-100");
-  }, 1200);
-}
-
-// =================== RENDER ====================
-function setGame(game) {
-  currentGame = game;
-  renderPrices();
-  updateGameTabs();
-  clearCart();
-}
-
-function updateGameTabs() {
-  const tabMLBB = document.getElementById("tabMLBB");
-  const tabPUBG = document.getElementById("tabPUBG");
-
-  if (currentGame === "MLBB") {
-    tabMLBB.classList.add("bg-white/20", "shadow-neon");
-    tabMLBB.classList.remove("bg-white/5");
-    tabPUBG.classList.remove("bg-white/20", "shadow-neon");
-    tabPUBG.classList.add("bg-white/5");
-
-    document.getElementById("mlbbFields").classList.remove("hidden");
-    document.getElementById("pubgFields").classList.add("hidden");
-  } else {
-    tabPUBG.classList.add("bg-white/20", "shadow-neon");
-    tabPUBG.classList.remove("bg-white/5");
-    tabMLBB.classList.remove("bg-white/20", "shadow-neon");
-    tabMLBB.classList.add("bg-white/5");
-
-    document.getElementById("mlbbFields").classList.add("hidden");
-    document.getElementById("pubgFields").classList.remove("hidden");
-  }
-}
-
-function productCardHTML(item) {
-  return `
-    <div class="p-3 bg-glass rounded-xl backdrop-blur shadow-glow text-sm">
-      <p class="font-semibold text-xs">${item.display}</p>
-      <p class="opacity-75 text-xs">${item.price.toLocaleString()} Ks</p>
-      <button onclick="addToCart('${item.id}')"
-        class="mt-2 w-full bg-gradient-to-r from-primary to-secondary py-1 rounded-xl shadow-neon text-xs font-semibold">
-        + Add
-      </button>
-    </div>
-  `;
-}
-
-function renderPrices() {
-  const box = document.getElementById("priceList");
-  const title = document.getElementById("priceTitle");
-  box.innerHTML = "";
-
-  if (currentGame === "MLBB") {
-    title.textContent = t("priceTitleMLBB");
-    const diamonds = filterProducts("MLBB", "diamond");
-    const specials = filterProducts("MLBB", "special");
-
-    box.innerHTML += `<h3 class="col-span-2 text-xs opacity-60 uppercase tracking-wide">${t("sectionDiamonds")}</h3>`;
-    diamonds.forEach(item => {
-      box.innerHTML += productCardHTML(item);
-    });
-
-    box.innerHTML += `<h3 class="col-span-2 mt-3 text-xs opacity-60 uppercase tracking-wide">${t("sectionWeekly")}</h3>`;
-    specials.forEach(item => {
-      box.innerHTML += productCardHTML(item);
-    });
-  } else {
-    title.textContent = t("priceTitlePUBG");
-    const ucs = filterProducts("PUBG", "uc");
-    const primes = filterProducts("PUBG", "prime");
-
-    box.innerHTML += `<h3 class="col-span-2 text-xs opacity-60 uppercase tracking-wide">${t("sectionUc")}</h3>`;
-    ucs.forEach(item => {
-      box.innerHTML += productCardHTML(item);
-    });
-
-    box.innerHTML += `<h3 class="col-span-2 mt-3 text-xs opacity-60 uppercase tracking-wide">${t("sectionPrime")}</h3>`;
-    primes.forEach(item => {
-      box.innerHTML += productCardHTML(item);
-    });
-  }
-}
-
-function renderCart() {
-  const box = document.getElementById("cartList");
-  box.innerHTML = "";
-
-  if (!cart.length) {
-    box.innerHTML = `<p class="text-sm opacity-70 mt-1">${t("cartEmpty")}</p>`;
-    return;
-  }
-
-  cart.forEach((item, i) => {
-    const lineTotal = item.price * item.qty;
-    box.innerHTML += `
-      <div class="p-3 bg-glass rounded-xl backdrop-blur shadow-glow mt-2 text-sm">
-        <div class="flex justify-between items-center">
-          <div>
-            <p class="font-semibold text-xs">${item.game} — ${item.display}</p>
-            <p class="text-xs opacity-70">${item.price.toLocaleString()} Ks × ${item.qty} = ${lineTotal.toLocaleString()} Ks</p>
-          </div>
-          <div class="flex gap-2 items-center">
-            <button class="px-3 bg-gray-700 rounded" onclick="dec(${i})">-</button>
-            <p>${item.qty}</p>
-            <button class="px-3 bg-gray-700 rounded" onclick="inc(${i})">+</button>
-          </div>
-        </div>
-      </div>
-    `;
+// ================ MONGOOSE =============
+mongoose.set("strictQuery", false);
+mongoose
+  .connect(MONGO_URI)
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => {
+    console.error("❌ MongoDB connection error:", err);
+    process.exit(1);
   });
 
-  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  box.innerHTML += `
-    <div class="mt-3 text-right text-sm">
-      <span class="opacity-80">${t("totalLabel")}</span>
-      <span class="font-semibold"> ${total.toLocaleString()} Ks</span>
-    </div>
-  `;
-}
 
-// =================== CART OPS ====================
-function addToCart(productId) {
-  const product = PRODUCTS.find(p => p.id === productId);
-  if (!product) return;
+// ================ ORDER MODEL ===========
+const ItemSchema = new mongoose.Schema(
+  {
+    label: { type: String, required: true }, // e.g. "343 Diamonds" / "Weekly Pass 1 (wp1)"
+    game: { type: String, enum: ["MLBB", "PUBG"], required: true },
+    price: { type: Number, required: true },
+    qty: { type: Number, required: true, min: 1 },
+  },
+  { _id: false }
+);
 
-  const exists = cart.find(c => c.id === product.id);
-  if (exists) {
-    exists.qty++;
-  } else {
-    cart.push({
-      id: product.id,
-      game: product.game,
-      label: product.label,
-      display: product.display,
-      price: product.price,
-      qty: 1,
-    });
-  }
-  renderCart();
-  showToast(`${t("toastAddedPrefix")} ${product.display}`);
-}
+const OrderSchema = new mongoose.Schema(
+  {
+    orderId: { type: Number, index: true, unique: true },
+    orderCode: { type: String, index: true }, // e.g. BKS000001
 
-function inc(i) {
-  cart[i].qty++;
-  renderCart();
-}
+    startToken: { type: String, index: true }, // "web_xxx" payload key
 
-function dec(i) {
-  if (cart[i].qty > 1) cart[i].qty--;
-  else cart.splice(i, 1);
-  renderCart();
-}
+    source: {
+      type: String,
+      enum: ["web", "bot"],
+      default: "web",
+    },
 
-function clearCart() {
-  cart = [];
-  renderCart();
-}
+    userId: { type: Number }, // Telegram chat id
+    username: { type: String }, // @username
+    game: { type: String, enum: ["MLBB", "PUBG"], required: true },
 
-// =================== FLOW ====================
-function goStep2() {
-  const mlbbId = document.getElementById("mlbbId").value.trim();
-  const svId = document.getElementById("svId").value.trim();
-  const pubgId = document.getElementById("pubgId").value.trim();
+    mlbbId: { type: String },
+    mlbbServerId: { type: String },
+    pubgId: { type: String },
 
-  if (!cart.length) {
-    alert(t("alertAddItem"));
-    return;
-  }
+    items: { type: [ItemSchema], required: true },
+    totalPrice: { type: Number, required: true },
 
-  if (currentGame === "MLBB") {
-    if (!mlbbId || !svId) {
-      alert(t("alertFillMlbb"));
-      return;
-    }
-  } else {
-    if (!pubgId) {
-      alert(t("alertFillPubg"));
-      return;
-    }
-  }
+    slipFileId: { type: String }, // Telegram photo file_id
 
-  // build preview
-  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const itemsHTML = cart
-    .map(i => `• ${i.display} × ${i.qty} = ${(i.price * i.qty).toLocaleString()} Ks`)
-    .join("<br>");
+    status: {
+      type: String,
+      enum: [
+        "waiting_for_slip",
+        "waiting_user_confirm",
+        "pending_admin",
+        "completed",
+        "rejected",
+      ],
+      default: "waiting_for_slip",
+    },
 
-  let idLine = "";
-  if (currentGame === "MLBB") {
-    idLine = `ID + SV ID: ${mlbbId} ${svId}`;
-  } else {
-    idLine = `PUBG ID: ${pubgId}`;
-  }
+    // Clean-up info
+    userMessages: [{ type: Number }], // message_ids in user chat
+    adminMessageId: { type: Number },
+    adminChatId: { type: Number },
+  },
+  { timestamps: true }
+);
 
-  const preview = document.getElementById("preview");
-  preview.innerHTML = `
-    <p><b>Game:</b> ${currentGame}</p>
-    <p><b>${idLine}</b></p>
-    <hr class="my-2 opacity-40" />
-    <p class="mb-1"><b>${t("previewItemsTitle")}</b></p>
-    <p>${itemsHTML}</p>
-    <hr class="my-2 opacity-40" />
-    <p class="text-base"><b>${t("previewTotalLabel")}</b> ${total.toLocaleString()} Ks</p>
-  `;
+// Auto-increment orderId & BKS000001
+OrderSchema.pre("save", async function (next) {
+  if (!this.isNew || this.orderId) return next();
 
-  document.getElementById("step1").classList.add("hidden");
-  document.getElementById("step2").classList.remove("hidden");
-}
+  const last = await this.constructor
+    .findOne({})
+    .sort({ orderId: -1 })
+    .select("orderId")
+    .lean();
 
-function backToStep1() {
-  document.getElementById("step2").classList.add("hidden");
-  document.getElementById("step1").classList.remove("hidden");
-}
-
-// Reset all (header Reset button)
-function resetAll() {
-  cart = [];
-  renderCart();
-  document.getElementById("mlbbId").value = "";
-  document.getElementById("svId").value = "";
-  document.getElementById("pubgId").value = "";
-  setGame("MLBB");
-  document.getElementById("step2").classList.add("hidden");
-  document.getElementById("step1").classList.remove("hidden");
-}
-
-// =================== CONFIRM & OPEN BOT ====================
-async function confirmOrderAndOpenBot() {
-  const mlbbId = document.getElementById("mlbbId").value.trim();
-  const svId   = document.getElementById("svId").value.trim();
-  const pubgId = document.getElementById("pubgId").value.trim();
-
-  if (!cart.length) {
-    alert(t("alertCartEmpty"));
-    backToStep1();
-    return;
-  }
-
-  const payload = {
-    game: currentGame,
-    cart: cart.map(i => ({
-      game: i.game,
-      label: i.label,
-      price: i.price,
-      qty: i.qty,
-    })),
-    mlbbId,
-    svId,
-    pubgId,
-  };
-
-  if (currentGame === "MLBB") {
-    if (!mlbbId || !svId) {
-      alert(t("alertFillMlbb"));
-      return;
-    }
-  } else {
-    if (!pubgId) {
-      alert(t("alertFillPubg"));
-      return;
-    }
-  }
-
-  try {
-    const res = await fetch(API_BASE + "/api/orders/web-order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await res.json();
-    if (!data.success) {
-      alert(data.message || t("alertServerError"));
-      return;
-    }
-
-    const startCode = data.startCode; // e.g. web_xxxxx
-    const botUrl = "https://t.me/BikaStoreBot?start=" + encodeURIComponent(startCode);
-    window.location.href = botUrl;
-  } catch (err) {
-    console.error(err);
-    alert(t("alertNetworkError"));
-  }
-}
-
-// =================== HEADER HIDE ON SCROLL ====================
-let lastScrollY = 0;
-window.addEventListener("scroll", () => {
-  const header = document.getElementById("topHeader");
-  if (!header) return;
-  const current = window.scrollY || document.documentElement.scrollTop;
-
-  if (current > lastScrollY && current > 60) {
-    header.classList.add("header-hidden");
-  } else {
-    header.classList.remove("header-hidden");
-  }
-  lastScrollY = current;
+  this.orderId = last?.orderId ? last.orderId + 1 : 1;
+  this.orderCode = "BKS" + String(this.orderId).padStart(6, "0");
+  next();
 });
 
-// =================== INIT ====================
-renderPrices();
-renderCart();
-updateGameTabs();
-applyLanguage();
-</script>
+const Order = mongoose.model("Order", OrderSchema);
 
-</body>
-</html>
+// ================ TELEGRAM BOT ==========
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+console.log("🤖 BIKA Store Bot polling started");
+
+// Helper: format time
+function formatDateTime(date) {
+  const d = new Date(date);
+  const options = {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  };
+  return d.toLocaleString("en-GB", options).replace(",", "");
+}
+
+// Helper: build items summary "343 + wp1"
+function buildItemsShort(items) {
+  // label ထဲပါ code တွေလည်း ဖြစ်နိူင်တော့ လွယ်လွယ်က i.label တွေကို + နဲ့ချိတ်
+  return items.map((i) => i.label).join(" + ");
+}
+
+// Helper: full caption for summary
+function buildOrderCaption(order, mentionUser = true) {
+  const lines = [];
+
+  // 1. Slip photo (photo ကို သီးသန့်ပို့မယ်, caption မှာ စာ)
+  if (mentionUser && order.username) {
+    lines.push(`2. User - @${order.username}`);
+  } else if (mentionUser && order.userId) {
+    lines.push(`2. User ID - ${order.userId}`);
+  }
+
+  lines.push(`3. Game - ${order.game}`);
+
+  if (order.game === "MLBB") {
+    lines.push(
+      `4. ID+Sv ID - ${order.mlbbId || "-"} ${order.mlbbServerId || "-"}`
+    );
+  } else if (order.game === "PUBG") {
+    lines.push(`4. PUBG ID - ${order.pubgId || "-"}`);
+  } else {
+    lines.push(`4. ID - -`);
+  }
+
+  const itemsShort = buildItemsShort(order.items);
+  lines.push(`5. Items - ${itemsShort}`);
+  lines.push(`6. Total MMK - ${order.totalPrice.toLocaleString()} Ks`);
+  lines.push(`7. Order ID - ${order.orderCode}`);
+  lines.push(`8. Time - ${formatDateTime(order.createdAt)}`);
+
+  return lines.join("\n");
+}
+
+// ================ EXPRESS API ===========
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.send("BIKA STORE API & BOT is running ✅");
+});
+
+/**
+ * POST /api/orders/web-order
+ * Body JSON:
+ * {
+ *   game: "MLBB" | "PUBG",
+ *   cart: [{ label, game, price, qty }, ...],
+ *   mlbbId,
+ *   svId,
+ *   pubgId
+ * }
+ */
+app.post("/api/orders/web-order", async (req, res) => {
+  try {
+    const { game, cart, mlbbId, svId, pubgId } = req.body;
+
+    if (!game || !["MLBB", "PUBG"].includes(game)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or missing game" });
+    }
+
+    if (!Array.isArray(cart) || !cart.length) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Cart is empty" });
+    }
+
+    if (game === "MLBB" && (!mlbbId || !svId)) {
+      return res.status(400).json({
+        success: false,
+        message: "MLBB ID and Server ID are required",
+      });
+    }
+
+    if (game === "PUBG" && !pubgId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "PUBG ID is required" });
+    }
+
+    const items = cart.map((i) => ({
+      label: i.label,
+      game: i.game || game,
+      price: Number(i.price || 0),
+      qty: Number(i.qty || 0),
+    }));
+
+    const totalPrice = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+
+    if (!totalPrice) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Total price is 0" });
+    }
+
+    // random start token
+    const token =
+      Math.random().toString(36).slice(2, 8) +
+      Math.random().toString(36).slice(2, 5);
+
+    const order = await Order.create({
+      startToken: token,
+      game,
+      mlbbId: game === "MLBB" ? mlbbId : undefined,
+      mlbbServerId: game === "MLBB" ? svId : undefined,
+      pubgId: game === "PUBG" ? pubgId : undefined,
+      items,
+      totalPrice,
+      source: "web",
+      status: "waiting_for_slip",
+    });
+
+    return res.json({
+      success: true,
+      startCode: `web_${token}`,
+      orderCode: order.orderCode,
+    });
+  } catch (err) {
+    console.error("web-order error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+});
+
+// ================ BOT HANDLERS ==========
+
+
+// FRONTEND_URL ကို .env ထဲသတ်မှတ်ထားတယ်ဆိုရင်
+const WEB_URL = FRONTEND_URL || "https://bikastore-web.onrender.com"; // မသတ်မှတ်ရင် backup link
+
+// /start handler
+bot.onText(/^\/start(?:\s+(.+))?/, async (msg, match) => {
+  try {
+    const chatId = msg.chat.id;
+    const payload = match[1];
+
+    // 🌐 normal /start (no web_ payload)
+    if (!payload || !payload.startsWith("web_")) {
+      const text = [
+        "👋 BIKA Store Bot ထဲသို့ ကြိုဆိုပါတယ်။",
+        "",
+        "Web မှာ Order လုပ်ချင်ရင် အောက်က Web Store button ကိုနှိပ်ပါ။",
+        "Web ပေါ်မှာ Item တွေသတ်မှတ်သွားပြီးရင်",
+        "Open in Telegram / Go to Bot ကိုနှိပ်ပြီး ဒီ Bot ထဲကို ပြန်ဝင်ပါ။",
+      ].join("\n");
+
+      await bot.sendMessage(chatId, text, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🌐 Open Web Store",
+                web_app: { url: WEB_URL },
+              },
+            ],
+          ],
+        },
+      });
+      return;
+    }
+
+    // 🔗 /start web_xxxxx (web-order link ကနေသွားရာ)
+    const token = payload.slice(4); // remove "web_"
+    const order = await Order.findOne({ startToken: token });
+
+    if (!order) {
+      await bot.sendMessage(
+        chatId,
+        "😕 ဒီ web order ကို မတွေ့ရပါဘူး။ Order time ပြီးသွားပြီး ဖြစ်နိုင်ပါတယ်။"
+      );
+      return;
+    }
+
+    // User info ချိတ်
+    order.userId = chatId;
+    order.username = msg.from?.username || "";
+    await order.save();
+
+    // Items string
+    const itemsList = order.items
+      .map(
+        (i) =>
+          `• ${i.label} × ${i.qty} = ${(i.price * i.qty).toLocaleString()} Ks`
+      )
+      .join("\n");
+
+    let idLine = "";
+    if (order.game === "MLBB") {
+      idLine = `ID + SV ID - ${order.mlbbId} ${order.mlbbServerId}`;
+    } else if (order.game === "PUBG") {
+      idLine = `PUBG ID - ${order.pubgId}`;
+    }
+
+    const text = [
+      "🧾 Web Order Preview",
+      "",
+      `Game - ${order.game}`,
+      idLine,
+      "",
+      "Items:",
+      itemsList,
+      "",
+      `Total MMK - ${order.totalPrice.toLocaleString()} Ks`,
+      "",
+      "💵 Payment Info",
+      "KPay: Shine Htet Aung (09 264 202 637)",
+      "WavePay: Shine Htet Aung (09 264 202 637)",
+      "",
+      "ကျသင့်ငွေကို ပေးချေပြီး Slip ပုံကို ဒီ chat ထဲကို ပို့ပေးပါ။",
+    ].join("\n");
+
+    const sent = await bot.sendMessage(chatId, text);
+    order.userMessages.push(sent.message_id);
+    await order.save();
+  } catch (err) {
+    console.error("start handler error:", err);
+  }
+});
+
+// User sends slip photo
+bot.on("photo", async (msg) => {
+  try {
+    const chatId = msg.chat.id;
+    const fromId = msg.from?.id;
+    if (!fromId) return;
+
+    // Find latest waiting_for_slip order for this user
+    const order = await Order.findOne({
+      userId: fromId,
+      status: "waiting_for_slip",
+    }).sort({ createdAt: -1 });
+
+    if (!order) {
+      // Not related to web order
+      return;
+    }
+
+    // largest size
+    const photos = msg.photo || [];
+    const fileId = photos[photos.length - 1]?.file_id;
+    if (!fileId) return;
+
+    order.slipFileId = fileId;
+    order.status = "waiting_user_confirm";
+    await order.save();
+
+    const caption = [
+      "🧾 Order Summary",
+      "",
+      buildOrderCaption(order, true),
+      "",
+      "အချက်အလက်တွေ မှန်ကန်ရင် ✅ Confirm ကိုနှိပ်ပါ။",
+    ].join("\n");
+
+    const sent = await bot.sendPhoto(chatId, fileId, {
+      caption,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "✅ Confirm", callback_data: `user_confirm:${order._id}` }],
+        ],
+      },
+    });
+
+    order.userMessages.push(sent.message_id);
+    await order.save();
+  } catch (err) {
+    console.error("photo handler error:", err);
+  }
+});
+
+// Callback queries (Confirm / Approve / Reject)
+bot.on("callback_query", async (query) => {
+  try {
+    const data = query.data || "";
+    const fromId = query.from.id;
+
+    if (data.startsWith("user_confirm:")) {
+      const orderId = data.split(":")[1];
+      const order = await Order.findById(orderId);
+      if (!order) {
+        await bot.answerCallbackQuery(query.id, {
+          text: "Order not found.",
+          show_alert: true,
+        });
+        return;
+      }
+
+      order.status = "pending_admin";
+      await order.save();
+
+      await bot.answerCallbackQuery(query.id, {
+        text: "အော်ဒါကို Admin ဆီ ပို့ပေးထားပါတယ်။",
+        show_alert: false,
+      });
+
+      // Admin ကို notify
+      if (ADMIN_CHAT_ID && order.slipFileId) {
+        const caption = [
+          "🆕 Web Order (Pending)",
+          "",
+          buildOrderCaption(order, true),
+          "",
+          "Admin action:",
+        ].join("\n");
+
+        const sentAdmin = await bot.sendPhoto(
+          Number(ADMIN_CHAT_ID),
+          order.slipFileId,
+          {
+            caption,
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "✅ Approve",
+                    callback_data: `admin_approve:${order._id}`,
+                  },
+                  {
+                    text: "❌ Reject",
+                    callback_data: `admin_reject:${order._id}`,
+                  },
+                ],
+              ],
+            },
+          }
+        );
+
+        order.adminChatId = Number(ADMIN_CHAT_ID);
+        order.adminMessageId = sentAdmin.message_id;
+        await order.save();
+      }
+
+      // User ကို info message
+      const info = await bot.sendMessage(
+        order.userId,
+        "သင့်အော်ဒါကို Admin ဆီ ပို့ပေးပြီးပါပြီ။ ခဏလောက် စောင့်ပေးပါ။"
+      );
+      order.userMessages.push(info.message_id);
+      await order.save();
+    }
+
+    if (data.startsWith("admin_approve:") || data.startsWith("admin_reject:")) {
+      const [action, orderId] = data.split(":");
+      const order = await Order.findById(orderId);
+      if (!order) {
+        await bot.answerCallbackQuery(query.id, {
+          text: "Order not found.",
+          show_alert: true,
+        });
+        return;
+      }
+
+      const isApprove = action === "admin_approve";
+      order.status = isApprove ? "completed" : "rejected";
+      await order.save();
+
+      await bot.answerCallbackQuery(query.id, {
+        text: isApprove ? "Order approved." : "Order rejected.",
+        show_alert: false,
+      });
+
+      // Admin message ဖျက်
+      if (query.message) {
+        const adminChatId = query.message.chat.id;
+        const adminMsgId = query.message.message_id;
+        try {
+          await bot.deleteMessage(adminChatId, adminMsgId);
+        } catch (e) {}
+      }
+
+      // User အနေနဲ့ ရလဒ် ပို့
+      let userText = "";
+      if (isApprove) {
+        userText =
+          "သင့်အော်ဒါ အောင်မြင်စွာပြီးဆုံးသွားပါပြီ။\nဝယ်ယူအားပေးမှုအတွက် ကျေးဇူးအထူးပါ။";
+      } else {
+        userText =
+          "သင့်အော်ဒါကို Admin မှ ငြင်းပယ်လိုက်ပါသည်။\nထပ်မံ လိုအပ်တာရှိရင် @Official_Bika ထံ ဆက်သွယ်ပေးပါ။";
+      }
+
+      const userChatId = order.userId;
+      const resultMsg = await bot.sendMessage(userChatId, userText);
+
+      // Order info စာတွေ ဖျက် (သင့်ကြိုက်လို မထားချင်တဲ့ message တွေ)
+      const toDelete = [...order.userMessages];
+      for (const mid of toDelete) {
+        try {
+          await bot.deleteMessage(userChatId, mid);
+        } catch (e) {}
+      }
+      order.userMessages = [resultMsg.message_id]; // နောက်သုံးဖို့လိုရင်
+      await order.save();
+    }
+  } catch (err) {
+    console.error("callback_query error:", err);
+  }
+});
+
+// ================ START SERVER ==========
+app.listen(PORT, () => {
+  console.log(`🚀 Express API running on port ${PORT}`);
+});
