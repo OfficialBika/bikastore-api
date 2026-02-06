@@ -8,9 +8,7 @@ import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import crypto from "crypto";                 // 👈 web-order အတွက်လိုမလား
-
-import connectMongo from "./db/mongo.js";    // ✅ Correct import name
+import connectMongo from "./db/mongo.js";
 
 // Routes
 import orderRoutes from "./routes/orders.js";
@@ -18,14 +16,15 @@ import reviewRoutes from "./routes/reviews.js";
 import paymentRoutes from "./routes/payments.js";
 import botRoutes from "./routes/bot.js";
 
-// Load .env
+// ✅ Web order routes (အသစ်)
+import webOrderRoutes from "./routes/webOrders.js";
+
 dotenv.config();
 
-// Initialize
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Helpers for dirname
+// Helpers for __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -41,7 +40,6 @@ app.use(
   })
 );
 
-// Parse JSON
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -51,106 +49,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // ---------------------------
 //   CONNECT DATABASE
 // ---------------------------
-connectMongo(); // ✅ Correct function name
+connectMongo();
 
 // ---------------------------
-//   WEB ORDER BRIDGE (website <-> bot)
-//   /api/orders/web-order          = website မှာ အော်ဒါတင်တဲ့အချိန်
-//   /api/orders/web-order/claim    = bot /start web_xxx မှာ ဖတ်တဲ့အချိန်
-// ---------------------------
-
-// In-memory store for web orders (Render restart 된ရင် ရှင်းသွားမယ်)
-const webOrders = new Map();
-
-// Website → create web order + startCode
-app.post("/api/orders/web-order", (req, res) => {
-  try {
-    const { game, cart, mlbbId, svId, pubgId } = req.body || {};
-
-    if (!game || !Array.isArray(cart) || !cart.length) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payload (game/cart missing)",
-      });
-    }
-
-    const total = cart.reduce(
-      (sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0),
-      0
-    );
-
-    // eg. web_0af31c92b3aa
-    const startCode = "web_" + crypto.randomBytes(6).toString("hex");
-
-    webOrders.set(startCode, {
-      game,
-      cart,
-      mlbbId: mlbbId || "",
-      svId: svId || "",
-      pubgId: pubgId || "",
-      total,
-      createdAt: Date.now(),
-      claimed: false,
-    });
-
-    return res.json({ success: true, startCode });
-  } catch (err) {
-    console.error("POST /api/orders/web-order error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-});
-
-// Bot → /start web_xxx နဲ့ claim လုပ်ဖို့
-app.post("/api/orders/web-order/claim", (req, res) => {
-  try {
-    const { startCode, telegramUserId, username, firstName } = req.body || {};
-
-    if (!startCode) {
-      return res.status(400).json({
-        success: false,
-        message: "startCode is required",
-      });
-    }
-
-    const record = webOrders.get(startCode);
-    if (!record) {
-      return res.status(404).json({
-        success: false,
-        message: "Invalid or expired startCode",
-      });
-    }
-
-    // one-time use (တစ်ကြိမ်သုံးရင်ပဲ ရှိအောင်)
-    webOrders.delete(startCode);
-
-    return res.json({
-      success: true,
-      order: {
-        game: record.game,
-        cart: record.cart,
-        total: record.total,
-        mlbbId: record.mlbbId,
-        svId: record.svId,
-        pubgId: record.pubgId,
-        telegramUserId,
-        username,
-        firstName,
-      },
-    });
-  } catch (err) {
-    console.error("POST /api/orders/web-order/claim error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-});
-
-// ---------------------------
-//   ROUTES (existing)
+//   ROUTES
 // ---------------------------
 
 app.get("/", (req, res) => {
@@ -162,10 +64,14 @@ app.get("/", (req, res) => {
   });
 });
 
+// သုံးခဲ့ပြီးသား routes
 app.use("/api/orders", orderRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/bot", botRoutes);
+
+// 🌐 Website web-order routes (အသစ်)
+app.use("/api/web-orders", webOrderRoutes);
 
 // ---------------------------
 //   HANDLE 404
