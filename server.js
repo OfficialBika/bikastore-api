@@ -14,7 +14,6 @@ import connectMongo from "./db/mongo.js";
 import orderRoutes from "./routes/orders.js";
 import reviewRoutes from "./routes/reviews.js";
 import paymentRoutes from "./routes/payments.js";
-import botRoutes from "./routes/bot.js";
 
 // ✅ Web order routes (FIXED)
 import webOrderRoutes from "./routes/webOrder.js";
@@ -60,7 +59,6 @@ app.get("/", (req, res) => {
 app.use("/api/orders", orderRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
-app.use("/bot", botRoutes);
 
 // ⭐⭐ IMPORTANT ⭐⭐
 // Bot & Website expectation နဲ့ ကိုက်အောင်
