@@ -16,34 +16,29 @@ import reviewRoutes from "./routes/reviews.js";
 import paymentRoutes from "./routes/payments.js";
 import botRoutes from "./routes/bot.js";
 
-// ✅ Web order routes (အသစ်)
-import webOrderRoutes from "./routes/webOrders.js";
+// ✅ Web order routes (FIXED)
+import webOrderRoutes from "./routes/webOrder.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Helpers for __dirname
+// Helpers
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ---------------------------
 //   MIDDLEWARES
 // ---------------------------
-
-app.use(
-  cors({
-    origin: process.env.WEB_ORIGIN || "*",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: process.env.WEB_ORIGIN || "*",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true,
+}));
 
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
-
-// Static folder for payment slip uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ---------------------------
@@ -54,27 +49,25 @@ connectMongo();
 // ---------------------------
 //   ROUTES
 // ---------------------------
-
 app.get("/", (req, res) => {
   res.json({
     status: "OK",
     service: "BIKA Store API",
     version: "1.0.0",
-    author: "OfficialBika",
   });
 });
 
-// သုံးခဲ့ပြီးသား routes
 app.use("/api/orders", orderRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/bot", botRoutes);
 
-// 🌐 Website web-order routes (အသစ်)
-app.use("/api/web-orders", webOrderRoutes);
+// ⭐⭐ IMPORTANT ⭐⭐
+// Bot & Website expectation နဲ့ ကိုက်အောင်
+app.use("/api/orders", webOrderRoutes);
 
 // ---------------------------
-//   HANDLE 404
+//   404
 // ---------------------------
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
