@@ -16,7 +16,7 @@ import reviewRoutes from "./routes/reviews.js";
 import paymentRoutes from "./routes/payments.js";
 
 // ✅ Web order routes (FIXED)
-import webOrderRoutes from "./routes/webOrder.js";
+import webOrderRoutes from "./routes/webOrders.js";
 
 dotenv.config();
 
@@ -56,13 +56,13 @@ app.get("/", (req, res) => {
   });
 });
 
-app.use("/api/orders", orderRoutes);
+app.use("/api/webOrders", orderRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
 
 // ⭐⭐ IMPORTANT ⭐⭐
 // Bot & Website expectation နဲ့ ကိုက်အောင်
-app.use("/api/orders", webOrderRoutes);
+app.use("/api/webOrders", webOrderRoutes);
 
 // ---------------------------
 //   404
