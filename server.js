@@ -58,7 +58,12 @@ app.get("/", (req, res) => {
 app.use("/api/orders", orderRoutes);
 
 // ✅ Website → Bot web-order flow
+// Website အတွက် အဟောင်း လမ်းကြောင်း (မပြောင်းသင့်တဲ့ပိုင်း)
+app.use("/api/web-orders", webOrderRoutes);
+
+// Bot အတွက် အသစ် သတ်မှတ်ထားတဲ့ လမ်းကြောင်း
 app.use("/api/orders/web-order", webOrderRoutes);
+
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
 
