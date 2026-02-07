@@ -14,8 +14,6 @@ import connectMongo from "./db/mongo.js";
 import orderRoutes from "./routes/orders.js";
 import reviewRoutes from "./routes/reviews.js";
 import paymentRoutes from "./routes/payments.js";
-
-// ✅ Web order routes (FIXED)
 import webOrderRoutes from "./routes/webOrders.js";
 
 dotenv.config();
@@ -56,13 +54,14 @@ app.get("/", (req, res) => {
   });
 });
 
-app.use("/api/webOrders", orderRoutes);
+// ✅ Bot / App orders
+app.use("/api/orders", orderRoutes);
+
+// ✅ Website → Bot web-order flow
+app.use("/api/orders/web-order", webOrderRoutes);
+
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
-
-// ⭐⭐ IMPORTANT ⭐⭐
-// Bot & Website expectation နဲ့ ကိုက်အောင်
-app.use("/api/webOrders", webOrderRoutes);
 
 // ---------------------------
 //   404
