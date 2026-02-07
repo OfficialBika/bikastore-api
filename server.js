@@ -28,11 +28,13 @@ const __dirname = path.dirname(__filename);
 // ---------------------------
 //   MIDDLEWARES
 // ---------------------------
-app.use(cors({
-  origin: process.env.WEB_ORIGIN || "*",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: process.env.WEB_ORIGIN || "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
 
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -46,6 +48,7 @@ connectMongo();
 // ---------------------------
 //   ROUTES
 // ---------------------------
+
 app.get("/", (req, res) => {
   res.json({
     status: "OK",
@@ -54,16 +57,15 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ Bot / App orders
+// ✅ Bot / App orders (Telegram Bot ထဲက direct order flow)
 app.use("/api/orders", orderRoutes);
 
 // ✅ Website → Bot web-order flow
-// Website အတွက် အဟောင်း လမ်းကြောင်း (မပြောင်းသင့်တဲ့ပိုင်း)
+//    - Website: POST /api/web-orders        (create web order, get startCode)
+//    - Bot:     POST /api/web-orders/claim  (claim startCode → return order)
 app.use("/api/web-orders", webOrderRoutes);
 
-// Bot အတွက် အသစ် သတ်မှတ်ထားတဲ့ လမ်းကြောင်း
-app.use("/api/orders/web-order", webOrderRoutes);
-
+// ✅ Reviews + Payments
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
 
