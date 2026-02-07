@@ -1,6 +1,6 @@
 // ------------------------------
 //  BIKA STORE — MongoDB Connect
-//  File: db/mongo.js
+//  File: db/mongo.js (FIXED)
 // ------------------------------
 
 import mongoose from "mongoose";
@@ -17,9 +17,7 @@ const connectMongo = async () => {
     console.log("⏳ Connecting to MongoDB Atlas...");
 
     await mongoose.connect(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 15000, // Prevent Render cold-start timeout
+      serverSelectionTimeoutMS: 15000, // Render cold start safe
       maxPoolSize: 10,
     });
 
@@ -27,7 +25,7 @@ const connectMongo = async () => {
   } catch (err) {
     console.error("❌ MongoDB Connection Failed:", err.message);
 
-    // Auto retry after 5 sec (Render compatible)
+    // Auto retry after 5 sec (Render friendly)
     setTimeout(connectMongo, 5000);
   }
 };
