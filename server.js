@@ -58,7 +58,7 @@ app.get("/", (req, res) => {
 app.use("/api/orders", orderRoutes);
 
 // ✅ Website → Bot web-order flow
-app.use("/api/web-orders", webOrderRoutes);
+app.use("/api/orders/web-order", webOrderRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
 
