@@ -1,11 +1,10 @@
 // ---------------------------
 //  BIKA STORE API — server.js
-//  Web Orders (DB + Multi-Claim)
+//  DB-based Web Orders (SAFE + IDEMPOTENT CLAIM)
 // ---------------------------
 
 import express from "express";
 import cors from "cors";
-import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import crypto from "crypto";
@@ -13,25 +12,28 @@ import crypto from "crypto";
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1);
+
 const PORT = process.env.PORT || 5000;
+const WEB_ORIGIN = process.env.WEB_ORIGIN || "*";
+const MONGO_URI = process.env.MONGO_URI;
 
 // ---------------------------
 //  MIDDLEWARE
 // ---------------------------
 app.use(
   cors({
-    origin: process.env.WEB_ORIGIN || "*",
+    origin: WEB_ORIGIN,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-
-app.use(bodyParser.json({ limit: "10mb" }));
+app.use(express.json({ limit: "10mb" }));
 
 // ---------------------------
 //  MONGODB CONNECT
 // ---------------------------
-const MONGO_URI = process.env.MONGO_URI;
-
 if (!MONGO_URI) {
   console.error("❌ MONGO_URI missing in environment variables");
   process.exit(1);
@@ -40,45 +42,45 @@ if (!MONGO_URI) {
 mongoose
   .connect(MONGO_URI, {
     serverSelectionTimeoutMS: 15000,
+    maxPoolSize: 10,
   })
   .then(() => console.log("🍃 MongoDB connected"))
   .catch((err) => {
-    console.error("❌ MongoDB connection error:", err.message);
+    console.error("❌ MongoDB error:", err.message);
     process.exit(1);
   });
 
 // ---------------------------
-//  WEB ORDER MODEL (TTL + multi-claim)
+//  WEB ORDER MODEL (TTL)
 // ---------------------------
-const webOrderSchema = new mongoose.Schema({
-  startCode: { type: String, unique: true, required: true },
+const webOrderSchema = new mongoose.Schema(
+  {
+    startCode: { type: String, unique: true, index: true },
 
-  // "MLBB" or "PUBG"
-  game: { type: String, enum: ["MLBB", "PUBG"], required: true },
+    game: { type: String, enum: ["MLBB", "PUBG"], required: true },
+    cart: { type: Array, required: true },
 
-  // Cart from website (array of items)
-  cart: { type: Array, required: true },
+    mlbbId: { type: String, default: "" },
+    svId: { type: String, default: "" },
+    pubgId: { type: String, default: "" },
 
-  // MLBB fields
-  mlbbId: String,
-  svId: String,
+    total: { type: Number, required: true },
 
-  // PUBG field
-  pubgId: String,
+    // Claim state (idempotent)
+    claimed: { type: Boolean, default: false },
+    claimedBy: { type: String, default: "" }, // telegramUserId as string
+    claimedAt: { type: Date, default: null },
 
-  // total amount (MMK)
-  total: { type: Number, required: true },
-
-  // ✅ multi-claim support (how many times this link is used)
-  claimedCount: { type: Number, default: 0 },
-
-  // TTL — document auto-deletes after 30 minutes
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    expires: 60 * 30, // 30 minutes
+    // TTL (auto delete after 30 mins)
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      expires: 60 * 30,
+      index: true,
+    },
   },
-});
+  { versionKey: false }
+);
 
 const WebOrder = mongoose.model("WebOrder", webOrderSchema);
 
@@ -89,8 +91,14 @@ app.get("/", (req, res) => {
   res.json({
     status: "OK",
     service: "BIKA Store API",
-    version: "web-orders-multi-claim",
+    time: new Date().toISOString(),
   });
+});
+
+// (Optional) Simple debug endpoint (safe to remove later)
+app.get("/api/health", async (req, res) => {
+  const dbState = mongoose.connection.readyState; // 1 = connected
+  res.json({ ok: true, dbConnected: dbState === 1 });
 });
 
 // =====================================================
@@ -101,18 +109,17 @@ app.post("/api/web-orders", async (req, res) => {
   try {
     const { game, cart, mlbbId, svId, pubgId } = req.body || {};
 
-    // Basic validation
-    if (!game || (game !== "MLBB" && game !== "PUBG")) {
+    if (!game || !Array.isArray(cart) || cart.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or missing game type",
+        message: "Invalid payload (game/cart missing)",
       });
     }
 
-    if (!Array.isArray(cart) || cart.length === 0) {
+    if (game !== "MLBB" && game !== "PUBG") {
       return res.status(400).json({
         success: false,
-        message: "Cart is empty",
+        message: "Invalid game type",
       });
     }
 
@@ -131,8 +138,7 @@ app.post("/api/web-orders", async (req, res) => {
     }
 
     const total = cart.reduce(
-      (sum, item) =>
-        sum + Number(item.price || 0) * Number(item.qty || 1),
+      (s, i) => s + Number(i.price || 0) * Number(i.qty || 1),
       0
     );
 
@@ -143,7 +149,13 @@ app.post("/api/web-orders", async (req, res) => {
       });
     }
 
-    const startCode = "web_" + crypto.randomBytes(6).toString("hex");
+    // Generate unique startCode (retry-safe)
+    let startCode = "";
+    for (let attempt = 0; attempt < 5; attempt++) {
+      startCode = "web_" + crypto.randomBytes(6).toString("hex");
+      const exists = await WebOrder.findOne({ startCode }).lean();
+      if (!exists) break;
+    }
 
     await WebOrder.create({
       startCode,
@@ -153,16 +165,14 @@ app.post("/api/web-orders", async (req, res) => {
       svId: svId || "",
       pubgId: pubgId || "",
       total,
+      claimed: false,
+      claimedBy: "",
+      claimedAt: null,
     });
 
-    console.log("📝 Created WebOrder:", { startCode, game, total });
-
-    return res.json({
-      success: true,
-      startCode, // e.g. web_a1b2c3d4e5f6
-    });
+    return res.json({ success: true, startCode });
   } catch (err) {
-    console.error("❌ create web order:", err);
+    console.error("❌ POST /api/web-orders error:", err);
     return res.status(500).json({
       success: false,
       message: "Server error",
@@ -171,7 +181,7 @@ app.post("/api/web-orders", async (req, res) => {
 });
 
 // =====================================================
-//  BOT → CLAIM WEB ORDER (multi-claim allowed)
+//  BOT → CLAIM WEB ORDER (IDEMPOTENT)
 //  POST /api/web-orders/claim
 // =====================================================
 app.post("/api/web-orders/claim", async (req, res) => {
@@ -185,6 +195,8 @@ app.post("/api/web-orders/claim", async (req, res) => {
       });
     }
 
+    const tgId = telegramUserId ? String(telegramUserId) : "";
+
     const order = await WebOrder.findOne({ startCode });
 
     if (!order) {
@@ -194,20 +206,39 @@ app.post("/api/web-orders/claim", async (req, res) => {
       });
     }
 
-    // ❌ မစစ်တော့: one-time-use
-    // if (order.claimed) { ... }
+    // If already claimed:
+    // - If same user -> return the order again (idempotent, fixes double click)
+    // - If different user -> reject
+    if (order.claimed) {
+      if (tgId && order.claimedBy && order.claimedBy === tgId) {
+        return res.json({
+          success: true,
+          order: {
+            game: order.game,
+            cart: order.cart,
+            total: order.total,
+            mlbbId: order.mlbbId,
+            svId: order.svId,
+            pubgId: order.pubgId,
+            telegramUserId,
+            username,
+            firstName,
+            note: "already_claimed_by_same_user",
+          },
+        });
+      }
 
-    // ✅ multi-claim: link ကို ကြိမ်တွေဖုံး သုံးလို့ရ
-    order.claimedCount = (order.claimedCount || 0) + 1;
+      return res.status(400).json({
+        success: false,
+        message: "Order already claimed",
+      });
+    }
+
+    // First time claim
+    order.claimed = true;
+    order.claimedBy = tgId || "";
+    order.claimedAt = new Date();
     await order.save();
-
-    console.log("🔁 Claimed WebOrder:", {
-      startCode,
-      game: order.game,
-      total: order.total,
-      claimedCount: order.claimedCount,
-      telegramUserId,
-    });
 
     return res.json({
       success: true,
@@ -224,7 +255,7 @@ app.post("/api/web-orders/claim", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("❌ claim web order:", err);
+    console.error("❌ POST /api/web-orders/claim error:", err);
     return res.status(500).json({
       success: false,
       message: "Server error",
@@ -233,8 +264,15 @@ app.post("/api/web-orders/claim", async (req, res) => {
 });
 
 // ---------------------------
+//  404
+// ---------------------------
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: "Route not found" });
+});
+
+// ---------------------------
 //  START SERVER
 // ---------------------------
 app.listen(PORT, () => {
-  console.log(`🚀 BIKA Store API running on port ${PORT}`);
+  console.log(`🚀 API running on port ${PORT}`);
 });
