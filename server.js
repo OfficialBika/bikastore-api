@@ -1,6 +1,6 @@
 // ---------------------------
 //  BIKA STORE API — server.js
-//  DB-based Web Orders (FINAL)
+//  DB-based Web Orders (FINAL DEBUG)
 // ---------------------------
 
 import express from "express";
@@ -18,10 +18,12 @@ const PORT = process.env.PORT || 5000;
 // ---------------------------
 //  MIDDLEWARE
 // ---------------------------
-app.use(cors({
-  origin: process.env.WEB_ORIGIN || "*",
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: process.env.WEB_ORIGIN || "*",
+    credentials: true,
+  })
+);
 app.use(bodyParser.json({ limit: "10mb" }));
 
 // ---------------------------
@@ -59,7 +61,7 @@ const webOrderSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
-    expires: 60 * 30, // ⏱ 30 minutes TTL
+    expires: 60 * 30, // ⏱ auto delete after 30 minutes
   },
 });
 
@@ -84,21 +86,22 @@ app.post("/api/web-orders", async (req, res) => {
     const { game, cart, mlbbId, svId, pubgId } = req.body || {};
 
     if (!game || !Array.isArray(cart) || !cart.length) {
-      return res.status(400).json({
+      console.warn("⚠️ /api/web-orders invalid payload:", req.body);
+      return res.json({
         success: false,
         message: "Invalid payload",
       });
     }
 
     if (game === "MLBB" && (!mlbbId || !svId)) {
-      return res.status(400).json({
+      return res.json({
         success: false,
         message: "MLBB ID + Server ID required",
       });
     }
 
     if (game === "PUBG" && !pubgId) {
-      return res.status(400).json({
+      return res.json({
         success: false,
         message: "PUBG ID required",
       });
@@ -109,15 +112,28 @@ app.post("/api/web-orders", async (req, res) => {
       0
     );
 
+    if (!Number.isFinite(total) || total <= 0) {
+      return res.json({
+        success: false,
+        message: "Invalid cart total",
+      });
+    }
+
     const startCode = "web_" + crypto.randomBytes(6).toString("hex");
 
     await WebOrder.create({
       startCode,
       game,
       cart,
-      mlbbId,
-      svId,
-      pubgId,
+      mlbbId: mlbbId || "",
+      svId: svId || "",
+      pubgId: pubgId || "",
+      total,
+    });
+
+    console.log("🌐 [CREATE] web order:", {
+      startCode,
+      game,
       total,
     });
 
@@ -127,7 +143,7 @@ app.post("/api/web-orders", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ create web order:", err);
-    return res.status(500).json({
+    return res.json({
       success: false,
       message: "Server error",
     });
@@ -142,8 +158,14 @@ app.post("/api/web-orders/claim", async (req, res) => {
   try {
     const { startCode, telegramUserId, username, firstName } = req.body || {};
 
+    console.log("🌐 [CLAIM] request:", {
+      startCode,
+      telegramUserId,
+      username,
+    });
+
     if (!startCode) {
-      return res.status(400).json({
+      return res.json({
         success: false,
         message: "startCode required",
       });
@@ -152,14 +174,16 @@ app.post("/api/web-orders/claim", async (req, res) => {
     const order = await WebOrder.findOne({ startCode });
 
     if (!order) {
-      return res.status(404).json({
+      console.warn("⚠️ [CLAIM] startCode not found:", startCode);
+      return res.json({
         success: false,
         message: "Invalid or expired link",
       });
     }
 
     if (order.claimed) {
-      return res.status(400).json({
+      console.warn("⚠️ [CLAIM] already claimed:", startCode);
+      return res.json({
         success: false,
         message: "Order already claimed",
       });
@@ -169,6 +193,12 @@ app.post("/api/web-orders/claim", async (req, res) => {
     order.claimed = true;
     await order.save();
     await WebOrder.deleteOne({ _id: order._id });
+
+    console.log("✅ [CLAIM] ok:", {
+      startCode,
+      game: order.game,
+      total: order.total,
+    });
 
     return res.json({
       success: true,
@@ -186,7 +216,7 @@ app.post("/api/web-orders/claim", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ claim web order:", err);
-    return res.status(500).json({
+    return res.json({
       success: false,
       message: "Server error",
     });
